@@ -46,16 +46,28 @@
 因此，利用大模型智能体进行自动算子性能优化，不仅能节省手动迁移的大量成本，还能显著提升端到端的模型推理速度。
 
 ---
-
 ## 🧩 迁移难点 (Key Challenges)
 
-> *本章节详细阐述从 x86/ARM Intrinsics 迁移至 RISC-V RVV 的核心技术难点。*
+本项目面临的挑战不仅仅是指令集的翻译，更在于跨越**硬件架构范式**与**软件工程复杂度**的双重鸿沟。
 
-* **语义鸿沟 (Semantic Gap):** x86 (SSE/AVX) 与 RVV (可变长向量) 在编程模型上的本质差异。
-* **寄存器管理:** ...
-* **内存访问模式:** ...
-* **(此处请补充更多具体的迁移难点描述)**
+### 1. 架构范式的根本性差异 (Architectural Paradigm Shift)
+* **固定 vs. 可变 (Fixed vs. Scalable)**: x86 AVX/SSE 依赖固定长度寄存器，代码中充斥着硬编码的步长（如 `i += 8`）。而 RISC-V RVV 采用硬件无关的向量长度 (VLEN)。迁移时必须将“定长循环”重构为基于 `vsetvli` 的 **Strip-mining 循环**。
+* **指令语义鸿沟**: 许多 x86 复杂指令（如 `_mm256_shuffle_ps`）在 RISC-V 中没有 1:1 的映射，需要组合 `vrgather`, `vmerge`, `vslide` 等多条基础指令才能等效实现，极其考验智能体的逻辑重组能力。
 
+### 2. 复杂的寄存器与内存管理 (Resource Management)
+* **LMUL 的动态权衡**: RVV 独有的 **LMUL (Logic Vector Length Multiplier)** 机制要求智能体根据算子计算密度，动态推断最优的寄存器分组策略，以平衡指令吞吐量与寄存器溢出风险。
+* **NCNN 特有的数据打包**: NCNN 强制采用了 `elempack` 数据布局。智能体必须具备**“布局感知 (Layout-Aware)”**能力，正确处理非标准布局下的 Load/Store 及边界对齐，否则极易引发段错误。
+
+### 3. 项目级依赖导致的“上下文幻觉” (Project-Level Hallucination)
+这是从 Demo 走向真实工程最大的拦路虎。
+* **隐形依赖链 (Implicit Dependency Chains)**: 
+    * 真实算子实现并非孤立存在，往往依赖分散在 `headers/`、`utils/` 中的宏定义、结构体声明及辅助函数。
+    * **难点**: 智能体如果只关注当前源文件，会因缺失类型定义而**“臆造” (Hallucinate)** 出不存在的 API 或错误的函数签名；若引入过多无关文件，又会因 Context Window 噪声导致注意力分散。
+* **预处理器的“迷雾” (Macro Obfuscation)**: 
+    * NCNN 大量使用 C 预处理器（Macros）来生成模板代码（如 `DEFINE_LAYER_CREATOR`）。
+    * **难点**: 这种元编程手段掩盖了真实的控制流。智能体难以像编译器一样精准展开宏，极易在理解代码逻辑时产生误判，导致生成的迁移代码引用了错误的符号或逻辑分支。
+
+> **总结**: 本 Benchmark 要求智能体具备**全栈能力**：向下要精通 RVV 汇编与微架构特性，向上要能解析复杂的 C++ 工程依赖关系，准确管理上下文以抑制幻觉。
 ---
 
 ## ⚖️ 与其他 Benchmark 的差异 (Comparison)
