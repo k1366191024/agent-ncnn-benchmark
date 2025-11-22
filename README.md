@@ -70,27 +70,60 @@
 * **(况首旭部分):** 介绍开题时提到的差异点...
 
 ---
-
 ## 📊 测试集设计 (Benchmark Design)
 
-我们基于 NCNN 源码特性，对算子进行了系统性的筛选与分级。
+为了全面评估智能体在代码迁移中的能力，我们设计了**“软件-硬件”双维度的难度分级体系**。
 
-### 难度分级 (Difficulty Levels)
-详见 [operator_difficulty_level.csv](./operator_difficulty_level.csv)
+### 📐 难度分级体系 (Difficulty Matrix)
 
-* **L1 (Basic)**: 包含 `relu`, `concat` 等基础算子。逻辑简单，易于自动化迁移。
-* **L2 (Advanced)**: 包含 `convolution`, `softmax`, `lstm` 等复杂算子。通常涉及 Im2Col 变换、滑窗优化或复杂的向量规约（Reduction）。
+我们基于算子的**代码逻辑复杂度 (Software)** 和 **硬件指令特性 (Hardware)** 对 27 个核心算子进行了交叉评估。详细数据请查阅 [operator_difficulty_level.csv](operator_difficulty_level.csv)。
 
-<details>
-<summary>🔻 点击展开查看 27 个核心算子明细</summary>
+#### 1. 软件复杂度 (Software Complexity)
+* 🟢 **L1 (Basic)**: 逻辑简单，无复杂依赖（如 `Relu`, `Concat`）。
+* 🟡 **L2 (Advanced)**: 涉及复杂计算图、非连续内存或滑动窗口（如 `Conv`, `LSTM`）。
 
-| 等级 | 算子列表 |
-| :--- | :--- |
-| **L1** | `concat`, `dropout`, `relu`, `slice`, `ShuffleChannel` |
-| **L2** | `swish`, `eltwise`, `sigmoid`, `innerproduct`, `tanh`, `batchnorm`, `Convolution1d`, `softmax`, `pooling`, `convolutiondepthwise`, `lstm`, `gelu`, `scale`, `reshape`, `binaryop`, `interp`, `lrn`, `convolution`, `Deconvolution`, `GroupNorm`, `Flatten`, `DeconvolutionDepthWise` |
+#### 2. 硬件复杂度 (Hardware Complexity)
+* 🟢 **H1 (Throughput)**: 访存模式规则，主要受限于计算吞吐量。
+* 🔴 **H2 (Latency/Vector)**: 涉及复杂向量指令（如归约、查表）、非对齐访问或对流水线延迟敏感。
+
+---
+
+### 🎯 算子分布明细 (Operator Distribution)
+
+<details open>
+<summary>🔻 点击折叠/展开详细列表</summary>
+
+| 算子名称 (Operator) | 软件难度 (SW) | 硬件难度 (HW) | 特性描述 |
+| :--- | :---: | :---: | :--- |
+| `concat` | L1 | H1 | 简单的内存拼接，带宽敏感 |
+| `dropout` | L1 | H1 | 随机掩码生成，元素级操作 |
+| `relu` | L1 | H1 | 简单的激活函数 |
+| `slice` | L1 | H1 | 张量切片操作 |
+| `ShuffleChannel` | L1 | **H2** | 涉及跨通道数据重排 (Shuffle)，硬件开销大 |
+| `eltwise` | L2 | H1 | 元素级广播操作 |
+| `batchnorm` | L2 | H1 | 批归一化，涉及均值方差计算 |
+| `pooling` | L2 | H1 | 池化操作，规则的局部窗口 |
+| `convolutiondepthwise`| L2 | H1 | 深度可分离卷积，访存密集 |
+| `swish` | L2 | **H2** | 复合激活函数 (x * sigmoid) |
+| `sigmoid` | L2 | **H2** | 超越函数，通常需要泰勒展开或查表 |
+| `innerproduct` | L2 | **H2** | 全连接层，大矩阵乘法 |
+| `tanh` | L2 | **H2** | 双曲正切，高计算强度 |
+| `Convolution1d` | L2 | **H2** | 一维卷积 |
+| `softmax` | L2 | **H2** | 指数运算 + 全局归约 (Reduction) |
+| `lstm` | L2 | **H2** | 循环神经网络，存在时间步依赖 |
+| `gelu` | L2 | **H2** | 高斯误差线性单元 |
+| `scale` | L2 | **H2** | 缩放操作 |
+| `reshape` | L2 | **H2** | 维度变换，可能涉及内存拷贝 |
+| `binaryop` | L2 | **H2** | 二元操作 |
+| `interp` | L2 | **H2** | 插值算法 |
+| `lrn` | L2 | **H2** | 局部响应归一化 |
+| `convolution` | L2 | **H2** | 标准卷积，Im2Col + GEMM |
+| `Deconvolution` | L2 | **H2** | 转置卷积 |
+| `GroupNorm` | L2 | **H2** | 分组归一化 |
+| `Flatten` | L2 | **H2** | 展平操作 |
+| `DeconvolutionDepthWise`| L2 | **H2** | 深度转置卷积 |
 
 </details>
-
 ### 三大类测试设计
 | 类别 ID | 类别名称 | 描述 | 典型算子 |
 | :--- | :--- | :--- | :--- |
