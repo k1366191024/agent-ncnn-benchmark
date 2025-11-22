@@ -87,7 +87,7 @@
 * **Level 2 (Medium):** 涉及归约 (Reduction) 或 跨车道 (Cross-lane) 操作...
 * **Level 3 (Hard):** 复杂的滑动窗口或不规则内存访问...
 
-*(详细设计请参考: [三大类测试设计文档](https://www.notion.so/benchmark-2b3085af0d2e8114afebde341c74f2cf) & [难度分级设计文档](https://www.notion.so/2b3085af0d2e81eeadf0c12f259d9f86))*
+(详细设计请参考: [三大类测试设计文档](./NCNN%20benchmark层级划分介绍.md) & [难度分级设计文档](./算子维度划分介绍.md))
 
 ---
 
