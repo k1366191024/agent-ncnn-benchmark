@@ -71,9 +71,25 @@
 
 ---
 
-## 📊 测试集设计与难度分级 (Dataset & Hierarchy)
+## 📊 测试集设计 (Benchmark Design)
 
-我们设计了三大类测试场景，并根据算子的并行度、内存访问模式及同步需求进行了严格的难度分级。
+我们基于 NCNN 源码特性，对算子进行了系统性的筛选与分级。
+
+### 难度分级 (Difficulty Levels)
+详见 [operator_difficulty_level.csv](./operator_difficulty_level.csv)
+
+* **L1 (Basic)**: 包含 `relu`, `concat` 等基础算子。逻辑简单，易于自动化迁移。
+* **L2 (Advanced)**: 包含 `convolution`, `softmax`, `lstm` 等复杂算子。通常涉及 Im2Col 变换、滑窗优化或复杂的向量规约（Reduction）。
+
+<details>
+<summary>🔻 点击展开查看 27 个核心算子明细</summary>
+
+| 等级 | 算子列表 |
+| :--- | :--- |
+| **L1** | `concat`, `dropout`, `relu`, `slice`, `ShuffleChannel` |
+| **L2** | `swish`, `eltwise`, `sigmoid`, `innerproduct`, `tanh`, `batchnorm`, `Convolution1d`, `softmax`, `pooling`, `convolutiondepthwise`, `lstm`, `gelu`, `scale`, `reshape`, `binaryop`, `interp`, `lrn`, `convolution`, `Deconvolution`, `GroupNorm`, `Flatten`, `DeconvolutionDepthWise` |
+
+</details>
 
 ### 三大类测试设计
 | 类别 ID | 类别名称 | 描述 | 典型算子 |
