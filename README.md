@@ -65,9 +65,9 @@
 ### 🆚 vs. 通用代码 Benchmark
 * 大多数现有 Benchmark 关注 Python/Java 等通用逻辑，缺乏对 **底层硬件指令 (Intrinsics)** 和 **并行计算** 的考量。
 
-* ### 2. OPENCV 的独特性与通用 Benchmark 的差异 
- 介绍与 OpenCV 迁移任务的差异...
-* ### 2. NCNN 的独特性与通用 Benchmark 的差异 
+### 🆚 OpenCV vs. 其他库
+* **(陈鹏飞部分):** 介绍与 OpenCV 迁移任务的差异...
+### 🆚 NCNN vs.  其他库
 
 与 HumanEval、MBPP 等关注通用逻辑生成的 Benchmark 不同，NCNN 作为一个端侧极致性能的推理框架，其代码迁移面临着**系统级软件工程**的独特挑战：
 
