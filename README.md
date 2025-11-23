@@ -69,28 +69,65 @@
 
 > **总结**: 本 Benchmark 要求智能体具备**全栈能力**：向下要精通 RVV 汇编与微架构特性，向上要能解析复杂的 C++ 工程依赖关系，准确管理上下文以抑制幻觉。
 ---
+## ⚖️ 与其他库及 Benchmark 的差异 (Comparison)
 
-## ⚖️ 与其他 Benchmark 的差异 (Comparison)
+> *本章节深入剖析本 Benchmark 与高性能视觉库（OpenCV）及现有代码生成数据集（如 SWE-bench, HumanEval）的本质区别。*
 
-> *本章节对比本 Benchmark 与现有的代码生成/迁移数据集（如 HumanEval, MBPP）以及其他高性能库（如 OpenCV）的差异。*
+### 1. 与 OpenCV 的核心差异 (vs. OpenCV)
 
-### 🆚 vs. 通用代码 Benchmark
-* 大多数现有 Benchmark 关注 Python/Java 等通用逻辑，缺乏对 **底层硬件指令 (Intrinsics)** 和 **并行计算** 的考量。
+虽然 NCNN 和 OpenCV 同为计算机视觉领域的 C++ 库，但两者的**优化哲学**与**迁移难度**存在维度级的差异。
 
-### 🆚 OpenCV vs. 其他库
-* **(陈鹏飞部分):** 介绍与 OpenCV 迁移任务的差异...
-### 🆚 NCNN vs.  其他库
-## ⚖️ 与相关 Benchmark 的对比 (Comparison with Related Benchmarks)
+#### 🚩 1.1 优化哲学的根本分歧 (Optimization Philosophy)
+* **OpenCV (通用主义 / Generality)**
+    * **目标**: 覆盖广泛的视觉场景，保持 API 稳定。
+    * **特征**: 标准化数据格式 (HWC/CHW)，易于互操作；算子相对独立；向量化仅集中在热点区域。
+* **NCNN (极致主义 / Extremism)**
+    * **目标**: 榨干端侧推理的**每一个时钟周期**，追求极限性能。
+    * **特征**: 激进的内存布局 (`elempack`) 牺牲通用性换取连续访问；手工优化的汇编 Intrinsics 占比极高。
+
+#### 🧩 1.2 算子语义的复杂度鸿沟 (Complexity Gap)
+
+| 维度 | NCNN 深度学习算子 | OpenCV 传统算子 |
+| :--- | :--- | :--- |
+| **计算密度** | **极高** (如 Winograd 卷积，单算子数千行代码) | **中低** (多数为简单像素操作) |
+| **数据依赖** | **复杂** (多层循环嵌套，Tiling 策略) | **简单** (多为逐像素/邻域操作) |
+| **精度要求** | 需处理 `int8`/`fp16` 量化细节 | 通常 `float32`/`uint8` 即可 |
+
+> **迁移挑战**: NCNN 要求智能体深刻理解算法的数学本质（如卷积的 Winograd 变换），才能将其正确映射到 RVV 的向量化策略中；而 OpenCV 的挑战主要在于算子数量庞大。
+
+#### 📦 1.3 独特的数据布局陷阱 (Layout Pitfalls)
+
+* **NCNN 的 `elempack` 机制**:
+    ```cpp
+    // input shape: [batch, channels, height, width]
+    // elempack=4 时, 实际存储变为: [batch, channels/4, height, width, 4]
+    ```
+    智能体必须识别代码中**隐式假设**的打包粒度 (4/8/16)，Load/Store 指令必须严格匹配 `vl` 步长，否则会导致**错位访问**。
+* **OpenCV 的标准布局**:
+    采用标准的 `[rows * cols * channels]` 连续存储，访问模式更符合常规思维。
+
+#### 🕸️ 1.4 工程依赖的“深度陷阱” (Dependency Depth)
+* **NCNN (垂直深度高)**: `算子` → `Layer 基类` → `Allocator` → `Option` → `CPU 特性检测`。依赖链虽窄但深，智能体极易在逐层追踪中迷失上下文。
+* **OpenCV (水平广度大)**: `Core` ← `HAL` ← `ImgProc` ← `Parallel_for`。模块间耦合低，但涉及算子总数庞大，面临“上下文爆炸”问题。
+
+#### 🧠 1.5 智能体能力需求矩阵 (Capability Matrix)
+
+| 能力维度 | NCNN 迁移 | OpenCV 迁移 |
+| :--- | :---: | :---: |
+| **算法理解** | ⭐⭐⭐⭐⭐ (需懂深度学习) | ⭐⭐⭐ (传统 CV 知识) |
+| **架构映射** | ⭐⭐⭐⭐⭐ (RVV 特性深度利用) | ⭐⭐⭐⭐ (基础 SIMD 即可) |
+| **上下文管理** | ⭐⭐⭐⭐⭐ (深度依赖链) | ⭐⭐⭐⭐⭐ (广度模块交互) |
+| **宏编程解析** | ⭐⭐⭐⭐⭐ (重度依赖) | ⭐⭐⭐ (相对克制) |
+
+> **总结**: OpenCV 迁移是 **“广度优先搜索”**，而 NCNN 迁移是 **“深度优先探索”**。本 Benchmark 通过 NCNN，定向爆破智能体在复杂工程迁移场景下的**深度思考**能力。
+
+---
+
+### 2. 与通用代码 Benchmark 的对比 (vs. Related Benchmarks)
 
 本 Benchmark 填补了现有代码评测数据集在 **跨架构迁移 (Cross-Architecture)** 与 **极致性能优化 (Performance-Critical)** 交叉领域的空白。
 
-我们将 **Agent-NCNN** 与当前主流的代码生成/软件工程 Benchmark 进行了多维度对比。对比维度包括：
-* **粒度 (Granularity)**: 任务是函数级 (Func)、类级 (Class) 还是仓库级 (Repo)。
-* **语言 (Language)**: 涉及的编程语言。
-* **性能评估 (Perf)**: 是否关注代码运行效率（延迟/吞吐）。
-* **跨架构 (Cross-Arch)**: 是否涉及不同硬件指令集之间的迁移。
-
-### 📊 综合对比表 (Comparison Table)
+#### 📊 综合对比表 (Comparison Table)
 
 | Benchmark | 粒度 (Granularity) | 语言 (Language) | 正确性 (Correctness) | 性能 (Perf) | 跨架构 (Cross-Arch) | 核心任务 (Task Focus) |
 | :--- | :--- | :--- | :---: | :---: | :---: | :--- |
@@ -101,24 +138,18 @@
 | **ParEval** | Func-level | CUDA/C++ | ✅ | ✅ | ❌ | 并行计算程序生成 |
 | **Swe-Perf** | Repo-level | Python | ✅ | ✅ | ❌ | 仓库级性能瓶颈修复 |
 | **CISC-RISC** | Func-level | Assembly | ✅ | ❌ | ✅ | 汇编代码转译 |
-| **Agent-NCNN (Ours)** | **Repo-level** | **C++ / intrinsic** | **✅** | **✅** | **✅** | **跨架构算子迁移与优化** |
+| **Agent-NCNN (Ours)** | **Repo-level** | **C++ / Intrinsic** | **✅** | **✅** | **✅** | **跨架构算子迁移与优化** |
 
-### 🚀 核心差异分析 (Key Differentiators)
+#### 🚀 核心差异分析 (Key Differentiators)
 
-从上表可以看出，**Agent-NCNN** 是唯一同时覆盖 **仓库级上下文**、**性能优化** 和 **跨架构迁移** 三大挑战的 Benchmark。
+1.  **比通用代码生成更“硬核”**:
+    相比 SWE-bench 等关注逻辑正确性的 Benchmark，Agent-NCNN 引入了**“性能约束”**，要求生成的 RVV 代码在性能上超越标量实现。
 
-#### 1. 比通用代码生成更“硬核” (vs. ClassEval, SWE-bench)
-* 通用 Benchmark（如 SWE-bench）主要关注逻辑正确性。
-* **Agent-NCNN** 不仅要求代码跑通，还要求生成的 **RISC-V RVV 代码** 在性能上必须超越标量实现。这引入了额外的**“性能约束” (Performance Constraints)**，迫使智能体理解底层硬件特性。
+2.  **比高性能计算库更“复杂”**:
+    相比 KernelBench 的独立 Kernel 生成，Agent-NCNN 处于 **Repo-level**。迁移过程无法脱离 `ncnn/layer.h` 等项目上下文，迫使智能体处理**跨文件依赖**与**宏定义迷雾**。
 
-#### 2. 比高性能计算库更“复杂” (vs. KernelBench, ParEval)
-* KernelBench 和 ParEval 虽然关注性能，但多为独立的 Kernel 生成。
-* **Agent-NCNN** 处于 **Repo-level**。真实的 NCNN 算子迁移无法脱离项目上下文（如 `ncnn/layer.h` 中的宏定义、`elempack` 数据打包策略、工具函数依赖）。智能体必须在处理**跨文件依赖**的同时进行微架构优化。
-
-#### 3. 比单纯汇编转译更“工程化” (vs. CISC-RISC)
-* CISC-RISC 聚焦于汇编到汇编的翻译。
-* **Agent-NCNN** 模拟了真实的软件工程迁移场景：输入是 **x86 Intrinsic (C++)**，输出是 **RVV Intrinsic (C++)**。这不仅是指令翻译，更是从**定长向量 (Fixed SIMD)** 到 **变长向量 (Scalable Vector)** 的算法重构。
-
+3.  **比单纯汇编转译更“工程化”**:
+    相比 CISC-RISC 的指令互译，Agent-NCNN 是从 **x86 Intrinsic (C++)** 到 **RVV Intrinsic (C++)** 的迁移，涉及从**定长向量**到**变长向量 (VLEN)** 的算法级重构。
 
 ---
 ## 📊 测试设计与难度分级 (Test Design & Hierarchy)
@@ -210,17 +241,35 @@
 
 
 ---
+### 📉 算子级详细评测数据 (Detailed Operator Results)
 
-## 🏆 基准测试结果 (SoTA Results)
+为了深入分析智能体在不同类型算子上的表现，我们提供了核心算子的逐项评测结果，详细文件见[算子级评测数据](design/sota_llm_result.csv)。
 
-我们评估了当前最先进的大模型智能体（如 GPT-4o, Claude 3.5, DeepSeek-Coder 等）在本 Benchmark 上的表现。
+<details>
+<summary>🔻 点击查看详细算子通过率 (Click to expand)</summary>
 
-| Model / Agent | Strategy | Easy (Pass@1) | Medium (Pass@1) | Hard (Pass@1) | Average Speedup |
-| :--- | :--- | :--- | :--- | :--- | :--- |
-| GPT-4o | Zero-shot | - | - | - | - |
-| Claude 3.5 Sonnet | CoT | - | - | - | - |
-| **Ours (Agent)** | **Multi-Agent** | **-** | **-** | **-** | **-** |
+| Operator | Joy(DS-V3) | Joy(GPT-4o) | OH(Claude 4.5) | OH(Gemini 3) | Trae(DS-V3) |
+|:---|:---:|:---:|:---:|:---:|:---:|
+| `concat` | 0% | 0% | **100%** | **100%** | - |
+| `relu` | **100%** | - | - | - | - |
+| `dropout` | **100%** | - | - | - | - |
+| `eltwise` | 0% | 0% | - | - | - |
+| `batchnorm` | 20% | - | - | - | - |
+| `pooling` | - | - | **100%** | **100%** | 0% |
+| `conv_dw` | - | - | - | - | 0% |
+| `swish` | 20% | **40%** | - | - | - |
+| `sigmoid` | 40% | **60%** | - | - | - |
+| `innerproduct`| 0% | 0% | - | - | - |
+| `tanh` | 0% | - | - | - | - |
+| `conv1d` | 0% | - | - | - | - |
+| `softmax` | - | - | 0% | 0% | 12% |
+| `lstm` | - | - | 0% | 0% | 0% |
+| `gelu` | - | - | - | - | **100%** |
+| `convolution` | - | - | 0% | 0% | - |
 
+*(注: `-` 表示该模型未进行此算子的测试)*
+
+</details>
 ---
 
 ## 🛠️ 使用方法 (Getting Started)

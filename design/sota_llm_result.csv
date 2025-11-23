@@ -1,0 +1,19 @@
+﻿column 1,joyagent(deepseek-3.1),joyagent（gpt-4o-2024-11-20),openhands(claude-4.5-thinking),openhands(gemini3-pro-preview),openhands(gpt5),trae（deepseek-3.1）
+算子名称,pass@1,pass@1,pass@1,pass@1,pass@1,pass@1
+concat,0,0,1,1,0,/
+swish,0.2,0.4,/,/,/,/
+sigmoid,0.4,0.6,/,/,/,/
+eltwise,0,0,/,/,/,/
+innerproduct,0,0,/,/,/,/
+relu,1,/,/,/,/,/
+dropout,1,/,/,/,/,/
+batchnorm,0.2,/,/,/,/,/
+tanh,0,/,/,/,/,/
+convolution1d,0,/,/,/,/,/
+softmax,/,/,0,0,0,0.125
+pooling,/,/,1,1,0,0
+convolutiondepthwise,/,/,/,/,/,0
+lstm,/,/,0,0,0,0
+gelu,/,/,/,/,/,1
+convolution,,,0,0,0,
+,,,,,,
