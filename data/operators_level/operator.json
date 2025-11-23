@@ -1,0 +1,182 @@
+[
+  {
+    "id": 1,
+    "operator": "concat",
+    "primary_class": "ncnn::Concat",
+    "description": "多输入特征图在指定维度拼接",
+    "interfaces": [
+      "virtual int ncnn::Concat::forward(const std::vector<ncnn::Mat> &bottom_blobs, ncnn::Mat &top_blob, const ncnn::Option &opt) const;"
+    ],
+    "common_params": ["axis"],
+    "migration_focus": ["RVV向量化循环展开", "内存连续性与cache命中", "多输入指针访问模式"],
+    "test_inputs": ["[2, 16, 32, 32] x 3"]
+  },
+  {
+    "id": 2,
+    "operator": "swish",
+    "primary_class": "ncnn::Swish",
+    "description": "Swish激活函数 x * sigmoid(x)",
+    "interfaces": [
+      "virtual int ncnn::Swish::forward(const ncnn::Mat &bottom_blob, ncnn::Mat &top_blob, const ncnn::Option &opt) const;"
+    ],
+    "common_params": [],
+    "migration_focus": ["向量中同时保留x与sigmoid(x)", "exp近似与精度权衡", "RVV宽度自适应"],
+    "test_inputs": ["[1, 64, 56, 56]"]
+  },
+  {
+    "id": 3,
+    "operator": "sigmoid",
+    "primary_class": "ncnn::Sigmoid",
+    "description": "Sigmoid激活函数 1/(1+exp(-x))",
+    "interfaces": [
+      "virtual int ncnn::Sigmoid::forward(const ncnn::Mat &bottom_blob, ncnn::Mat &top_blob, const ncnn::Option &opt) const;"
+    ],
+    "common_params": [],
+    "migration_focus": ["exp近似优化", "RVV批量计算", "避免标量分支"],
+    "test_inputs": ["[1, 128, 28, 28]"]
+  },
+  {
+    "id": 4,
+    "operator": "eltwise",
+    "primary_class": "ncnn::Eltwise",
+    "description": "逐元素加/乘/最大等融合",
+    "interfaces": [
+      "virtual int ncnn::Eltwise::forward(const std::vector<ncnn::Mat> &bottom_blobs, ncnn::Mat &top_blob, const ncnn::Option &opt) const;"
+    ],
+    "common_params": ["operation", "coeffs"],
+    "migration_focus": ["RVV多输入并行", "对齐加载", "分支消除"],
+    "test_inputs": ["[1, 64, 32, 32] x 2"]
+  },
+  {
+    "id": 5,
+    "operator": "innerproduct",
+    "primary_class": "ncnn::InnerProduct",
+    "description": "全连接矩阵乘加偏置",
+    "interfaces": [
+      "virtual int ncnn::InnerProduct::forward(const ncnn::Mat &bottom_blob, ncnn::Mat &top_blob, const ncnn::Option &opt) const;"
+    ],
+    "common_params": ["num_output", "bias_term", "weight_data_size"],
+    "migration_focus": ["RVV矩阵向量乘", "weight布局重排", "量化路径验证"],
+    "test_inputs": ["[1, 1024] -> [1, 256]"]
+  },
+  {
+    "id": 6,
+    "operator": "relu",
+    "primary_class": "ncnn::ReLU",
+    "description": "ReLU与带负斜率变体",
+    "interfaces": [
+      "virtual int ncnn::ReLU::forward(const ncnn::Mat &bottom_blob, ncnn::Mat &top_blob, const ncnn::Option &opt) const;"
+    ],
+    "common_params": ["slope"],
+    "migration_focus": ["RVV掩码比较", "避免分支跳转", "inplace路径验证"],
+    "test_inputs": ["[1, 256, 14, 14]"]
+  },
+  {
+    "id": 7,
+    "operator": "dropout",
+    "primary_class": "ncnn::Dropout",
+    "description": "训练期按比例置零，推理期缩放",
+    "interfaces": [
+      "virtual int ncnn::Dropout::forward(const ncnn::Mat &bottom_blob, ncnn::Mat &top_blob, const ncnn::Option &opt) const;"
+    ],
+    "common_params": ["scale", "ratio"],
+    "migration_focus": ["分支快速跳过(推理)", "随机数替换/兼容", "RVV填充0优化"],
+    "test_inputs": ["[1, 128, 28, 28]"]
+  },
+  {
+    "id": 8,
+    "operator": "batchnorm",
+    "primary_class": "ncnn::BatchNorm",
+    "description": "通道归一化 (scale, bias, mean, var)",
+    "interfaces": [
+      "virtual int ncnn::BatchNorm::forward(const ncnn::Mat &bottom_blob, ncnn::Mat &top_blob, const ncnn::Option &opt) const;"
+    ],
+    "common_params": ["channels", "eps"],
+    "migration_focus": ["常量向量预载", "RVV通道并行", "融合激活可能性"],
+    "test_inputs": ["[1, 64, 112, 112]"]
+  },
+  {
+    "id": 9,
+    "operator": "tanh",
+    "primary_class": "ncnn::TanH",
+    "description": "双曲正切激活",
+    "interfaces": [
+      "virtual int ncnn::TanH::forward(const ncnn::Mat &bottom_blob, ncnn::Mat &top_blob, const ncnn::Option &opt) const;"
+    ],
+    "common_params": [],
+    "migration_focus": ["exp与除法近似", "RVV流水化", "精度/性能折中"],
+    "test_inputs": ["[1, 256, 20, 20]"]
+  },
+  {
+    "id": 10,
+    "operator": "convolution1d",
+    "primary_class": "ncnn::Convolution1D",
+    "description": "一维卷积 (序列/语音)",
+    "interfaces": [
+      "virtual int ncnn::Convolution1D::forward(const ncnn::Mat &bottom_blob, ncnn::Mat &top_blob, const ncnn::Option &opt) const;"
+    ],
+    "common_params": ["num_output", "kernel_w", "stride_w", "dilation_w", "groups", "bias_term"],
+    "migration_focus": ["RVV跨通道并行", "循环展开与指针递增", "weight重排 (out x k)"],
+    "test_inputs": ["[1, 64, 512] -> kernel 3 stride 1"]
+  },
+  {
+    "id": 11,
+    "operator": "softmax",
+    "primary_class": "ncnn::Softmax",
+    "description": "指数归一化生成概率",
+    "interfaces": [
+      "virtual int ncnn::Softmax::forward(const ncnn::Mat &bottom_blob, ncnn::Mat &top_blob, const ncnn::Option &opt) const;"
+    ],
+    "common_params": ["axis"],
+    "migration_focus": ["两遍(ReduceMax/ReduceSum)RVV实现", "数值稳定(exp(x-max))", "向量归一化"],
+    "test_inputs": ["[1, 1000]"]
+  },
+  {
+    "id": 12,
+    "operator": "pooling",
+    "primary_class": "ncnn::Pooling",
+    "description": "最大/平均池化",
+    "interfaces": [
+      "virtual int ncnn::Pooling::forward(const ncnn::Mat &bottom_blob, ncnn::Mat &top_blob, const ncnn::Option &opt) const;"
+    ],
+    "common_params": ["kernel_w", "kernel_h", "stride_w", "stride_h", "pad_w", "pad_h", "pooling_type"],
+    "migration_focus": ["RVV窗口归约", "边界pad处理统一", "最大与平均分支合并"],
+    "test_inputs": ["[1, 64, 56, 56] -> 3x3 stride2"]
+  },
+  {
+    "id": 13,
+    "operator": "convolutiondepthwise",
+    "primary_class": "ncnn::DepthwiseConvolution",
+    "description": "每通道独立卷积再可选点卷积",
+    "interfaces": [
+      "virtual int ncnn::DepthwiseConvolution::forward(const ncnn::Mat &bottom_blob, ncnn::Mat &top_blob, const ncnn::Option &opt) const;"
+    ],
+    "common_params": ["kernel_w", "kernel_h", "stride_w", "stride_h", "dilation_w", "dilation_h", "bias_term"],
+    "migration_focus": ["RVV通道遍历优化", "减少访存(内核缓存)", "点卷积融合机会"],
+    "test_inputs": ["[1, 128, 28, 28]"]
+  },
+  {
+    "id": 14,
+    "operator": "lstm",
+    "primary_class": "ncnn::LSTM",
+    "description": "长短期记忆单元(序列建模)",
+    "interfaces": [
+      "virtual int ncnn::LSTM::forward(const std::vector<ncnn::Mat> &bottom_blobs, std::vector<ncnn::Mat> &top_blobs, const ncnn::Option &opt) const;"
+    ],
+    "common_params": ["hidden_size", "direction", "bias_term"],
+    "migration_focus": ["门计算矩阵乘RVV化", "激活函数融合(sigm/tanh)", "时间步循环最小化"],
+    "test_inputs": ["input:[T=32, hidden=256]"]
+  },
+  {
+    "id": 15,
+    "operator": "gelu",
+    "primary_class": "ncnn::GELU",
+    "description": "Gaussian Error Linear Unit",
+    "interfaces": [
+      "virtual int ncnn::GELU::forward(const ncnn::Mat &bottom_blob, ncnn::Mat &top_blob, const ncnn::Option &opt) const;"
+    ],
+    "common_params": ["approximate"],
+    "migration_focus": ["erf/近似多项式实现", "RVV批处理", "精度与性能平衡 (tanh近似)"],
+    "test_inputs": ["[1, 768]"]
+  }
+]

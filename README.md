@@ -123,7 +123,7 @@
 ---
 ## 📊 测试设计与难度分级 (Test Design & Hierarchy)
 
-本 Benchmark 采用分层测试的方法论，从微观的算子实现到宏观的模型推理，构建了 **算子级 (Operator)**、**模型级 (Model)** 和 **库级 (Library)** 三大维度的评估体系。
+本 Benchmark 采用分层测试的方法论，如[层级划分介绍](design/intro_NCNNbenchmark_level.md)介绍，从微观的算子实现到宏观的模型推理，构建了 **算子级 (Operator)**、**模型级 (Model)** 和 **库级 (Library)** 三大维度的评估体系。
 
 ### 1. 测试层级设计 (Test Levels)
 
@@ -158,36 +158,50 @@
 
 #### 🧩 算子级难度 (Operator Difficulty)
 基于**软件逻辑**与**硬件特性**的双重维度进行分级。
-* **依据**: 算子的代码行数、控制流复杂度 (Software) 以及指令吞吐、向量化难度 (Hardware)。
-* **数据**: 详细分级请参阅 [docs/operator_difficulty_matrix.csv](./docs/operator_difficulty_matrix.csv)。
-
-#### 🧠 模型级难度 (Model Difficulty)
-基于模型包含的**算子多样性 (Variety)** 和 **算子数量 (Quantity)** 进行分级。
-* **Easy**: 算子种类少且多为基础算子（如 MobileNetV1）。
-* **Medium**: 算子种类丰富，包含少量自定义算子（如 ResNet-50）。
-* **Hard**: 算子计算图复杂，包含大量非标准算子或动态控制流（如 YOLOv5, Transformer）。
-
-#### 📚 库级难度 (Library Difficulty)
-* *🚧 敬请期待 (Coming Soon)*
-
----
+* **依据**: 算子的代码行数、控制流复杂度 (Software) 以及指令吞吐、向量化难度 (Hardware),参考文档[算子难度划分依据](design/intro_ops_dim.md)。
+* **数据**: 详细分级请参阅 [算子难度划分表](design/operator_difficulty_matrix.csv)。
 
 ## 🧪 各类测试题目 (Test Cases)
 
-基于上述设计，我们提供了丰富的测试用例集。
+基于上述设计，我们提供了丰富的测试用例集，涵盖从基础算子到复杂模型场景的全面评估。
 
 ### 1. 算子级题目 (Operator Cases)
-覆盖了 27 个核心算子，包含：
-* **基础计算**: `Add`, `Sub`, `Mul`
-* **神经网络层**: `Conv2d`, `DepthwiseConv`, `Pooling`, `Softmax`
-* **数据变换**: `Packing`, `Interleave`, `Shuffle`
+数据集包含 **16 个 NCNN 推理框架核心算子**，旨在覆盖推理关键路径并验证 RVV 向量化加速效果,详细见[算子级题目](data/operators_level/NCNN_operator_README.md)。主要类别如下：
+
+* **激活与归一化 (Activation & Norm)**:
+    * `ReLU`, `Swish`, `Sigmoid`, `TanH`, `GELU` (包含近似实现路径)
+    * `BatchNorm` (通道标准化), `Dropout` (推理期缩放)
+* **卷积与序列建模 (Convolution & Sequence)**:
+    * `Convolution1D` (一维卷积), `DepthwiseConvolution` (深度可分离卷积)
+    * `LSTM` (长短期记忆单元), `InnerProduct` (全连接)
+* **结构与数据处理 (Structure & Data)**:
+    * `Pooling` (池化), `Softmax` (归一化指数)
+    * `Concat` (多输入拼接，含通道特化变体), `Eltwise` (逐元素加/乘/最大)
 
 ### 2. 模型级题目 (Model Cases)
-选取了工业界最常用的代表性模型进行端到端迁移评估：
-* **分类 (Classification)**: `MobileNetV2`, `ResNet-18`, `SqueezeNet`
-* **检测 (Detection)**: `YOLO-Fastest`, `NanoDet`
-* **其它**: `SimplePose` (姿态估计)
+共计 **41 个模型**，分为两个层级进行端到端迁移评估，考察 Agent 在不同复杂度下的算子实现与替换能力。
 
+#### Level 1：基础模型迁移 (17 个模型)
+主要用于测试 Agent 在无算子重叠的实战场景下的底层算子迁移能力。
+* **目标检测 (Detection)**: `MobileNetSSD`, `NanoDet` (轻量级), `MobileNetV2/V3 SSDLite`, `SqueezeNetSSD`, `PeleeNet SSD`
+* **图像分类 (Classification)**: `SqueezeNet` (Fire module), `ShuffleNetV2` (Channel Shuffle), `YOLOv8/v11-Cls`
+* **OCR 与文本 (OCR & Text)**: `PP-OCRv3`, `PP-OCRv4` (检测与识别流水线)
+* **特定任务 (Specialized Tasks)**:
+    * `SimplePose` (姿态估计)
+    * `RVM` (实时视频抠图)
+    * `P2PNet` (人群计数/密度估计)
+    * `Piper` (语音合成推理模块)
+
+#### Level 2：复杂应用场景 (24 个模型)
+侧重于测试 Agent 在完整模型场景下处理多样化算子集合与复杂数据流的能力。
+* **YOLO 全系列 (YOLO Series)**: 覆盖 `YOLOv2` 至 `YOLOv11` 的经典与最新版本，包含 `YOLOX`, `YOLOv8-World` (开放词汇检测) 以及 `OBB` (旋转框)、`Pose` (姿态)、`Seg` (分割) 等变体。
+* **高级检测与分割 (Advanced Detection & Segmentation)**:
+    * `Faster R-CNN` (两阶段检测, RPN)
+    * `YOLACT` (实时实例分割)
+    * `R-FCN` (区域全卷积网络)
+* **人脸分析 (Face Analysis)**:
+    * `RetinaFace` (人脸检测与关键点)
+    * `SCRFD` (高效人脸检测，含 CrowdHuman 优化版)
 
 ### 3. 库级题目 (lib Cases)
 敬请期待
