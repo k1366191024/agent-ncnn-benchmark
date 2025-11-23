@@ -24,9 +24,9 @@
 
 ## 📝 项目介绍 (Introduction)
 
-为了促进 RISC-V 基础软件生态繁荣，同时推动学术界和产业界利用智能体（AI Agents）进行跨架构代码迁移的探索，我们基于端侧性能极致优化的 **NCNN 推理框架**，构建了业界首个**智能体驱动的 NCNN 库跨架构迁移Benchmark**。
+为了促进 RISC-V 基础软件生态繁荣，同时推动学术界和产业界利用智能体（AI Agents）进行跨架构代码迁移的探索，我们基于端侧性能极致优化的 **NCNN 推理框架**，构建了业界首个**智能体驱动的 NCNN 库跨架构迁移 Benchmark**。
 
-虽然目前已经有一些项目级代码 Benchmark 发布，但是，这些 Benchmark 并不适用于跨不同硬件架构（特别是针对 SIMD 指令集）的代码迁移任务。本项目的目标是提供一个标准化的测试平台，评估大模型智能体将现有成熟架构（x86/ARM/MIPS/LoongArch）的向量化实现自动迁移到 RISC-V Vector (RVV) 架构的能力，并关注代码的正确性与性能优化。
+虽然目前已经有一些项目级代码 Benchmark 发布，但是这些 Benchmark 并不适用于跨不同硬件架构（特别是针对 SIMD 指令集）的代码迁移任务。本项目的目标是提供一个标准化的测试平台，评估大模型智能体将现有成熟架构（x86/ARM/MIPS/LoongArch）的向量化实现自动迁移到 RISC-V Vector (RVV) 架构的能力，并重点关注代码的正确性与性能优化。
 
 ---
 
@@ -35,17 +35,18 @@
 ### 现状与痛点
 现有深度学习推理框架大多数并不原生支持 RISC-V 向量扩展后端。虽然仅有少数框架手动支持了部分算子的 RVV 后端，但往往存在相比标量实现**性能负优化**的算子，导致无法充分利用 RISC-V 处理器的向量扩展模块来加速模型推理。
 
-对这些深度学习框架逐个手动支持 RISC-V 向量化需要耗费大量的人力和时间成本。因此，**亟需对这些深度学习推理框架实现自动化支持向量化，并提升模型推理速度。**
+对这些深度学习框架逐个手动支持 RISC-V 向量化需要耗费大量的人力和时间成本。因此，**亟需实现这些深度学习推理框架的自动化向量化支持，并切实提升模型推理速度。**
 
 ### 自动化迁移的价值
-自动化代码迁移在维护系统方面至关重要，可以避免重复的手动工作，因为系统在其生命周期中通常会经历多次迁移。深度学习推理框架对 RISC-V 的向量化支持，本质上是从现有成熟的 x86、ARM 等架构的向量化支持，跨架构迁移到 RISC-V 的过程。
+自动化代码迁移在系统维护方面至关重要。由于系统在其生命周期中通常会经历多次迁移，自动化可以避免重复的手动工作。深度学习推理框架对 RISC-V 的向量化支持，本质上就是从现有成熟的 x86、ARM 等架构的向量化实现，跨架构迁移到 RISC-V 的过程。
 
 ### 大模型智能体的机遇
 随着大模型参数规模的不断扩张，其在代码领域的性能取得了显著提升。近年来，大模型智能体在代码生成、补全、重构、修复、测试用例生成以及最近的代码迁移等软件工程任务中得到了广泛应用。
 
-因此，利用大模型智能体进行自动算子性能优化，不仅能节省手动迁移的大量成本，还能显著提升端到端的模型推理速度。
+利用大模型智能体进行自动算子性能优化，不仅能节省手动迁移的大量成本，还能显著提升端到端的模型推理速度。
 
 ---
+
 ## 🧩 迁移难点 (Key Challenges)
 
 本项目面临的挑战不仅仅是指令集的翻译，更在于跨越**硬件架构范式**与**软件工程复杂度**的双重鸿沟。
@@ -60,15 +61,17 @@
 
 ### 3. 项目级依赖导致的“上下文幻觉” (Project-Level Hallucination)
 这是从 Demo 走向真实工程最大的拦路虎。
-* **隐形依赖链 (Implicit Dependency Chains)**: 
+* **隐形依赖链 (Implicit Dependency Chains)**:
     * 真实算子实现并非孤立存在，往往依赖分散在 `headers/`、`utils/` 中的宏定义、结构体声明及辅助函数。
     * **难点**: 智能体如果只关注当前源文件，会因缺失类型定义而**“臆造” (Hallucinate)** 出不存在的 API 或错误的函数签名；若引入过多无关文件，又会因 Context Window 噪声导致注意力分散。
-* **预处理器的“迷雾” (Macro Obfuscation)**: 
+* **预处理器的“迷雾” (Macro Obfuscation)**:
     * NCNN 大量使用 C 预处理器（Macros）来生成模板代码（如 `DEFINE_LAYER_CREATOR`）。
     * **难点**: 这种元编程手段掩盖了真实的控制流。智能体难以像编译器一样精准展开宏，极易在理解代码逻辑时产生误判，导致生成的迁移代码引用了错误的符号或逻辑分支。
 
 > **总结**: 本 Benchmark 要求智能体具备**全栈能力**：向下要精通 RVV 汇编与微架构特性，向上要能解析复杂的 C++ 工程依赖关系，准确管理上下文以抑制幻觉。
+
 ---
+
 ## ⚖️ 与其他库及 Benchmark 的差异 (Comparison)
 
 > *本章节深入剖析本 Benchmark 与高性能视觉库（OpenCV）及现有代码生成数据集（如 SWE-bench, HumanEval）的本质区别。*
@@ -152,18 +155,19 @@
     相比 CISC-RISC 的指令互译，Agent-NCNN 是从 **x86 Intrinsic (C++)** 到 **RVV Intrinsic (C++)** 的迁移，涉及从**定长向量**到**变长向量 (VLEN)** 的算法级重构。
 
 ---
-## 📊 测试设计与难度分级 (Test Design & Hierarchy)
 
-本 Benchmark 采用分层测试的方法论，如[层级划分介绍](design/intro_NCNNbenchmark_level.md)介绍，从微观的算子实现到宏观的模型推理，构建了 **算子级 (Operator)**、**模型级 (Model)** 和 **库级 (Library)** 三大维度的评估体系。
+## 📊 测试集设计与难度分级 (Dataset & Hierarchy)
+
+本 Benchmark 采用分层测试的方法论，如 [层级划分介绍](design/intro_NCNNbenchmark_level.md) 所述，从微观的算子实现到宏观的模型推理，构建了 **算子级 (Operator)**、**模型级 (Model)** 和 **库级 (Library)** 三大维度的评估体系。
 
 ### 1. 测试层级设计 (Test Levels)
 
 #### 🟢 Level 1: 算子级测试 (Operator Level)
 这是 Benchmark 的基石，关注单个算子从 x86/ARM 到 RISC-V RVV 的迁移质量。
-* **功能正确性测试 (Unit Testing)**: 
+* **功能正确性测试 (Unit Testing)**:
     * 对迁移后的算子进行严格的单元测试。
     * **标准**: 必须通过人类手动编写的测试用例 (Test Cases)，输出结果需与标量实现按位一致 (Bit-exact match) 或误差在容许范围内。
-* **性能基准测试 (Performance Benchmarking)**: 
+* **性能基准测试 (Performance Benchmarking)**:
     * 对比评估迁移后的 RVV 算子性能。
     * **基线 (Baseline)**: RISC-V 标量实现 (Scalar Implementation)。
     * **参考 (Reference)**: 人类专家手工优化的 RVV 算子性能 (Human-Optimized)。
@@ -171,10 +175,10 @@
 #### 🟡 Level 2: 模型级测试 (Model Level)
 关注多个算子协同工作时的端到端表现。
 * **Step 1: 算子覆盖测试**: 首先对目标模型涉及的所有算子类型进行单独的单元测试，确保“积木块”的功能正确性。
-* **Step 2: 推理精度测试 (Inference Accuracy)**: 
+* **Step 2: 推理精度测试 (Inference Accuracy)**:
     * 运行完整模型的推理流程。
     * **指标**: 将模型的推理结果与 RISC-V 标量实现下的结果进行对比，计算 Top-1/Top-5 精度损失，确保无逻辑错误导致的精度崩塌。
-* **Step 3: 端到端性能测试 (E2E Performance)**: 
+* **Step 3: 端到端性能测试 (E2E Performance)**:
     * 测试整个模型完成一次推理所需的总耗时（Latency）。
     * **评估**: 对比标量实现和人类手工实现的加速比 (Speedup)。
 
@@ -189,15 +193,17 @@
 
 #### 🧩 算子级难度 (Operator Difficulty)
 基于**软件逻辑**与**硬件特性**的双重维度进行分级。
-* **依据**: 算子的代码行数、控制流复杂度 (Software) 以及指令吞吐、向量化难度 (Hardware),参考文档[算子难度划分依据](design/intro_ops_dim.md)。
+* **依据**: 算子的代码行数、控制流复杂度 (Software) 以及指令吞吐、向量化难度 (Hardware)，参考文档 [算子难度划分依据](design/intro_ops_dim.md)。
 * **数据**: 详细分级请参阅 [算子难度划分表](design/operator_difficulty_matrix.csv)。
 
-## 🧪 各类测试题目 (Test Cases)
+---
+
+## 🧪 测试题目 (Test Cases)
 
 基于上述设计，我们提供了丰富的测试用例集，涵盖从基础算子到复杂模型场景的全面评估。
 
 ### 1. 算子级题目 (Operator Cases)
-数据集包含 **16 个 NCNN 推理框架核心算子**，旨在覆盖推理关键路径并验证 RVV 向量化加速效果,详见[算子级题目](data/operators_level/NCNN_operator_README.md)。主要类别如下：
+数据集包含 **16 个 NCNN 推理框架核心算子**，旨在覆盖推理关键路径并验证 RVV 向量化加速效果，详见 [算子级题目](data/operators_level/NCNN_operator_README.md)。主要类别如下：
 
 * **激活与归一化 (Activation & Norm)**:
     * `ReLU`, `Swish`, `Sigmoid`, `TanH`, `GELU` (包含近似实现路径)
@@ -210,7 +216,7 @@
     * `Concat` (多输入拼接，含通道特化变体), `Eltwise` (逐元素加/乘/最大)
 
 ### 2. 模型级题目 (Model Cases)
-共计 **41 个模型**，分为两个层级进行端到端迁移评估，考察 Agent 在不同复杂度下的算子实现与替换能力,详见[模型级level1题目](data/models_level/Level1_README.md)和详见[模型级level2题目](data/models_level/Level2_README.md)。
+共计 **41 个模型**，分为两个层级进行端到端迁移评估，考察 Agent 在不同复杂度下的算子实现与替换能力，详见 [模型级 Level 1 题目](data/models_level/Level1_README.md) 和 [模型级 Level 2 题目](data/models_level/Level2_README.md)。
 
 #### Level 1：基础模型迁移 (17 个模型)
 主要用于测试 Agent 在无算子重叠的实战场景下的底层算子迁移能力。
@@ -234,16 +240,16 @@
     * `RetinaFace` (人脸检测与关键点)
     * `SCRFD` (高效人脸检测，含 CrowdHuman 优化版)
 
-### 3. 库级题目 (lib Cases)
-敬请期待
+### 3. 库级题目 (Lib Cases)
+敬请期待。
 
 > 📥 **获取完整测试数据**: 请访问 `data/` 目录获取详细 JSON 格式的测试用例。
 
-
 ---
-### 📉 算子级详细评测数据 (Detailed Operator Results)
 
-为了深入分析智能体在不同类型算子上的表现，我们提供了核心算子的逐项评测结果，详细文件见[算子级评测数据](design/sota_llm_result.csv)。
+## 📊 基准测试结果 (SoTA Results)
+
+为了深入分析智能体在不同类型算子上的表现，我们提供了核心算子的逐项评测结果，详细文件见 [算子级评测数据](design/sota_llm_result.csv)。
 
 <details>
 <summary>🔻 点击查看详细算子通过率 (Click to expand)</summary>
@@ -270,6 +276,7 @@
 *(注: `-` 表示该模型未进行此算子的测试)*
 
 </details>
+
 ---
 
 ## 🛠️ 使用方法 (Getting Started)
