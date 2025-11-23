@@ -80,106 +80,120 @@
 ### 🆚 OpenCV vs. 其他库
 * **(陈鹏飞部分):** 介绍与 OpenCV 迁移任务的差异...
 ### 🆚 NCNN vs.  其他库
+## ⚖️ 与相关 Benchmark 的对比 (Comparison with Related Benchmarks)
 
-与 HumanEval、MBPP 等关注通用逻辑生成的 Benchmark 不同，NCNN 作为一个端侧极致性能的推理框架，其代码迁移面临着**系统级软件工程**的独特挑战：
+本 Benchmark 填补了现有代码评测数据集在 **跨架构迁移 (Cross-Architecture)** 与 **极致性能优化 (Performance-Critical)** 交叉领域的空白。
 
-* **💥 硬件紧耦合的编程范式 (Hardware-Coupled Programming)**
-    * **现状**：NCNN 的核心算子并非标准的 C++ 实现，而是大量采用了**平台特定的内联函数 (Intrinsics)** 和**手写汇编**，以手动管理寄存器分配和指令流水线。
-    * **挑战**：智能体无法仅通过“翻译逻辑”完成迁移，必须理解 x86/ARM 指令集与 RISC-V Vector (RVV) 在**向量寄存器长度 (VLEN)**、**指令延迟**及**分组策略 (LMUL)** 上的语义鸿沟，进行微架构层面的代码重构。
+我们将 **Agent-NCNN** 与当前主流的代码生成/软件工程 Benchmark 进行了多维度对比。对比维度包括：
+* **粒度 (Granularity)**: 任务是函数级 (Func)、类级 (Class) 还是仓库级 (Repo)。
+* **语言 (Language)**: 涉及的编程语言。
+* **性能评估 (Perf)**: 是否关注代码运行效率（延迟/吞吐）。
+* **跨架构 (Cross-Arch)**: 是否涉及不同硬件指令集之间的迁移。
 
-* **📦 向量化友好的内存布局 (SIMD-Friendly Data Layout)**
-    * **现状**：为了最大化 SIMD 指令的吞吐量，NCNN 引入了独特的 **Packing (数据打包)** 策略（如 `elempack=4/8/16`）。数据在内存中并非总是标准的 NCHW 排列，而是根据硬件向量宽度进行了重排。
-    * **挑战**：代码迁移过程中，必须严格维护这种数据布局约束。智能体需要具备**布局感知 (Layout-Aware)** 能力，正确生成对应的 load/store 指令及数据重排逻辑，否则会导致严重的内存访问错误或性能下降。
+### 📊 综合对比表 (Comparison Table)
 
-* **🚀 极致的指令级优化 (Instruction-Level Optimization)**
-    * **现状**：源端代码（x86/ARM）通常包含了针对特定 CPU 流水线优化的技巧，如激进的**循环展开 (Loop Unrolling)** 和**指令交错 (Instruction Interleaving)** 以隐藏延迟。
-    * **挑战**：直接迁移这些优化结构到 RISC-V 可能会导致指令缓存溢出或寄存器压力过大（RISC-V 处理器特性不同）。迁移任务要求智能体能够**识别并剥离**旧架构的过时优化，并针对 RVV 特性生成新的优化模式（如利用 RVV 的 mask 机制消除尾部循环）。
+| Benchmark | 粒度 (Granularity) | 语言 (Language) | 正确性 (Correctness) | 性能 (Perf) | 跨架构 (Cross-Arch) | 核心任务 (Task Focus) |
+| :--- | :--- | :--- | :---: | :---: | :---: | :--- |
+| **ClassEval** | Class-level | Python | ✅ | ❌ | ❌ | 类级别的代码生成 |
+| **SWE-bench** | Repo-level | Python | ✅ | ❌ | ❌ | 解决真实 GitHub Issue |
+| **JavaBench** | Repo-level | Java | ✅ | ❌ | ❌ | 专业 Java 开发能力 |
+| **KernelBench** | Repo-level | CUDA | ✅ | ✅ | ❌ | 高性能 GPU 内核生成 |
+| **ParEval** | Func-level | CUDA/C++ | ✅ | ✅ | ❌ | 并行计算程序生成 |
+| **Swe-Perf** | Repo-level | Python | ✅ | ✅ | ❌ | 仓库级性能瓶颈修复 |
+| **CISC-RISC** | Func-level | Assembly | ✅ | ❌ | ✅ | 汇编代码转译 |
+| **Agent-NCNN (Ours)** | **Repo-level** | **C++ / RVV** | **✅** | **✅** | **✅** | **跨架构算子迁移与优化** |
+
+### 🚀 核心差异分析 (Key Differentiators)
+
+从上表可以看出，**Agent-NCNN** 是唯一同时覆盖 **仓库级上下文**、**性能优化** 和 **跨架构迁移** 三大挑战的 Benchmark。
+
+#### 1. 比通用代码生成更“硬核” (vs. ClassEval, SWE-bench)
+* 通用 Benchmark（如 SWE-bench）主要关注逻辑正确性。
+* **Agent-NCNN** 不仅要求代码跑通，还要求生成的 **RISC-V RVV 代码** 在性能上必须超越标量实现。这引入了额外的**“性能约束” (Performance Constraints)**，迫使智能体理解底层硬件特性。
+
+#### 2. 比高性能计算库更“复杂” (vs. KernelBench, ParEval)
+* KernelBench 和 ParEval 虽然关注性能，但多为独立的 Kernel 生成。
+* **Agent-NCNN** 处于 **Repo-level**。真实的 NCNN 算子迁移无法脱离项目上下文（如 `ncnn/layer.h` 中的宏定义、`elempack` 数据打包策略、工具函数依赖）。智能体必须在处理**跨文件依赖**的同时进行微架构优化。
+
+#### 3. 比单纯汇编转译更“工程化” (vs. CISC-RISC)
+* CISC-RISC 聚焦于汇编到汇编的翻译。
+* **Agent-NCNN** 模拟了真实的软件工程迁移场景：输入是 **x86 Intrinsic (C++)**，输出是 **RVV Intrinsic (C++)**。这不仅是指令翻译，更是从**定长向量 (Fixed SIMD)** 到 **变长向量 (Scalable Vector)** 的算法重构。
+
 
 ---
-## 📊 测试集设计 (Benchmark Design)
+## 📊 测试设计与难度分级 (Test Design & Hierarchy)
 
-为了全面评估智能体在代码迁移中的能力，我们设计了**“软件-硬件”双维度的难度分级体系**。
+本 Benchmark 采用分层测试的方法论，从微观的算子实现到宏观的模型推理，构建了 **算子级 (Operator)**、**模型级 (Model)** 和 **库级 (Library)** 三大维度的评估体系。
 
-### 📐 难度分级体系 (Difficulty Matrix)
+### 1. 测试层级设计 (Test Levels)
 
-我们基于算子的**代码逻辑复杂度 (Software)** 和 **硬件指令特性 (Hardware)** 对 27 个核心算子进行了交叉评估。详细数据请查阅 [operator_difficulty_level.csv](operator_difficulty_level.csv)。
+#### 🟢 Level 1: 算子级测试 (Operator Level)
+这是 Benchmark 的基石，关注单个算子从 x86/ARM 到 RISC-V RVV 的迁移质量。
+* **功能正确性测试 (Unit Testing)**: 
+    * 对迁移后的算子进行严格的单元测试。
+    * **标准**: 必须通过人类手动编写的测试用例 (Test Cases)，输出结果需与标量实现按位一致 (Bit-exact match) 或误差在容许范围内。
+* **性能基准测试 (Performance Benchmarking)**: 
+    * 对比评估迁移后的 RVV 算子性能。
+    * **基线 (Baseline)**: RISC-V 标量实现 (Scalar Implementation)。
+    * **参考 (Reference)**: 人类专家手工优化的 RVV 算子性能 (Human-Optimized)。
 
-#### 1. 软件复杂度 (Software Complexity)
-* 🟢 **L1 (Basic)**: 逻辑简单，无复杂依赖（如 `Relu`, `Concat`）。
-* 🟡 **L2 (Advanced)**: 涉及复杂计算图、非连续内存或滑动窗口（如 `Conv`, `LSTM`）。
+#### 🟡 Level 2: 模型级测试 (Model Level)
+关注多个算子协同工作时的端到端表现。
+* **Step 1: 算子覆盖测试**: 首先对目标模型涉及的所有算子类型进行单独的单元测试，确保“积木块”的功能正确性。
+* **Step 2: 推理精度测试 (Inference Accuracy)**: 
+    * 运行完整模型的推理流程。
+    * **指标**: 将模型的推理结果与 RISC-V 标量实现下的结果进行对比，计算 Top-1/Top-5 精度损失，确保无逻辑错误导致的精度崩塌。
+* **Step 3: 端到端性能测试 (E2E Performance)**: 
+    * 测试整个模型完成一次推理所需的总耗时（Latency）。
+    * **评估**: 对比标量实现和人类手工实现的加速比 (Speedup)。
 
-#### 2. 硬件复杂度 (Hardware Complexity)
-* 🟢 **H1 (Throughput)**: 访存模式规则，主要受限于计算吞吐量。
-* 🔴 **H2 (Latency/Vector)**: 涉及复杂向量指令（如归约、查表）、非对齐访问或对流水线延迟敏感。
-
----
-
-### 🎯 算子分布明细 (Operator Distribution)
-
-<details open>
-<summary>🔻 点击折叠/展开详细列表</summary>
-
-| 算子名称 (Operator) | 软件难度 (SW) | 硬件难度 (HW) | 特性描述 |
-| :--- | :---: | :---: | :--- |
-| `concat` | L1 | H1 | 简单的内存拼接，带宽敏感 |
-| `dropout` | L1 | H1 | 随机掩码生成，元素级操作 |
-| `relu` | L1 | H1 | 简单的激活函数 |
-| `slice` | L1 | H1 | 张量切片操作 |
-| `ShuffleChannel` | L1 | **H2** | 涉及跨通道数据重排 (Shuffle)，硬件开销大 |
-| `eltwise` | L2 | H1 | 元素级广播操作 |
-| `batchnorm` | L2 | H1 | 批归一化，涉及均值方差计算 |
-| `pooling` | L2 | H1 | 池化操作，规则的局部窗口 |
-| `convolutiondepthwise`| L2 | H1 | 深度可分离卷积，访存密集 |
-| `swish` | L2 | **H2** | 复合激活函数 (x * sigmoid) |
-| `sigmoid` | L2 | **H2** | 超越函数，通常需要泰勒展开或查表 |
-| `innerproduct` | L2 | **H2** | 全连接层，大矩阵乘法 |
-| `tanh` | L2 | **H2** | 双曲正切，高计算强度 |
-| `Convolution1d` | L2 | **H2** | 一维卷积 |
-| `softmax` | L2 | **H2** | 指数运算 + 全局归约 (Reduction) |
-| `lstm` | L2 | **H2** | 循环神经网络，存在时间步依赖 |
-| `gelu` | L2 | **H2** | 高斯误差线性单元 |
-| `scale` | L2 | **H2** | 缩放操作 |
-| `reshape` | L2 | **H2** | 维度变换，可能涉及内存拷贝 |
-| `binaryop` | L2 | **H2** | 二元操作 |
-| `interp` | L2 | **H2** | 插值算法 |
-| `lrn` | L2 | **H2** | 局部响应归一化 |
-| `convolution` | L2 | **H2** | 标准卷积，Im2Col + GEMM |
-| `Deconvolution` | L2 | **H2** | 转置卷积 |
-| `GroupNorm` | L2 | **H2** | 分组归一化 |
-| `Flatten` | L2 | **H2** | 展平操作 |
-| `DeconvolutionDepthWise`| L2 | **H2** | 深度转置卷积 |
-
-</details>
-
-
-### 三大类测试设计
-| 类别 ID | 类别名称 | 描述 | 典型算子 |
-| :--- | :--- | :--- | :--- |
-| **Type-I** | 1-to-1 Mapping | 直接的指令映射，逻辑简单 | Add, Sub |
-| **Type-II** | Logic Adaptation | 需要调整循环结构或内存布局 | Pooling, Padding |
-| **Type-III** | Algorithm Redesign | 需要针对 RVV 特性重写算法 | GEMM, Conv |
-
-### 难度分级标准
-* **Level 1 (Easy):** 简单的元素级操作...
-* **Level 2 (Medium):** 涉及归约 (Reduction) 或 跨车道 (Cross-lane) 操作...
-* **Level 3 (Hard):** 复杂的滑动窗口或不规则内存访问...
-
-(详细设计请参考: [三大类测试设计文档](./intro_NCNNbenchmark_level.md) & [难度分级设计文档](./intro_ops_dim.md))
+#### 🔴 Level 3: 库级测试 (Library Level)
+* *🚧 敬请期待 (Coming Soon)* - 旨在评估整个 NCNN 库在 RISC-V 架构上的编译构建、依赖管理及系统级兼容性。
 
 ---
 
-## 🧪 测试题目 (Test Cases)
+### 2. 难度分级标准 (Difficulty Standards)
 
-本 Benchmark 包含模型级和算子级两个维度的测试。
+为了科学评估智能体的能力边界，我们在不同层级设计了细粒度的难度分级。
 
-### 1. 算子级测试 (Operator Level)
-* **输入:** C++ (x86 AVX/SSE 实现)
-* **目标:** C++ (RISC-V RVV 实现)
-* **Metric:** 正确性 (Pass@1), 性能加速比 (Speedup)
+#### 🧩 算子级难度 (Operator Difficulty)
+基于**软件逻辑**与**硬件特性**的双重维度进行分级。
+* **依据**: 算子的代码行数、控制流复杂度 (Software) 以及指令吞吐、向量化难度 (Hardware)。
+* **数据**: 详细分级请参阅 [docs/operator_difficulty_matrix.csv](./docs/operator_difficulty_matrix.csv)。
 
-### 2. 模型级测试 (Model Level)
-* **覆盖模型:** ResNet, MobileNet, YOLO, etc.
-* **评估指标:** 端到端推理延迟 (Latency), 精度损失 (Accuracy Drop)
+#### 🧠 模型级难度 (Model Difficulty)
+基于模型包含的**算子多样性 (Variety)** 和 **算子数量 (Quantity)** 进行分级。
+* **Easy**: 算子种类少且多为基础算子（如 MobileNetV1）。
+* **Medium**: 算子种类丰富，包含少量自定义算子（如 ResNet-50）。
+* **Hard**: 算子计算图复杂，包含大量非标准算子或动态控制流（如 YOLOv5, Transformer）。
+
+#### 📚 库级难度 (Library Difficulty)
+* *🚧 敬请期待 (Coming Soon)*
+
+---
+
+## 🧪 各类测试题目 (Test Cases)
+
+基于上述设计，我们提供了丰富的测试用例集。
+
+### 1. 算子级题目 (Operator Cases)
+覆盖了 27 个核心算子，包含：
+* **基础计算**: `Add`, `Sub`, `Mul`
+* **神经网络层**: `Conv2d`, `DepthwiseConv`, `Pooling`, `Softmax`
+* **数据变换**: `Packing`, `Interleave`, `Shuffle`
+
+### 2. 模型级题目 (Model Cases)
+选取了工业界最常用的代表性模型进行端到端迁移评估：
+* **分类 (Classification)**: `MobileNetV2`, `ResNet-18`, `SqueezeNet`
+* **检测 (Detection)**: `YOLO-Fastest`, `NanoDet`
+* **其它**: `SimplePose` (姿态估计)
+
+
+### 3. 库级题目 (lib Cases)
+敬请期待
+
+> 📥 **获取完整测试数据**: 请访问 `data/` 目录获取详细 JSON 格式的测试用例。
+
 
 ---
 
