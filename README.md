@@ -101,7 +101,7 @@
 | **ParEval** | Func-level | CUDA/C++ | ✅ | ✅ | ❌ | 并行计算程序生成 |
 | **Swe-Perf** | Repo-level | Python | ✅ | ✅ | ❌ | 仓库级性能瓶颈修复 |
 | **CISC-RISC** | Func-level | Assembly | ✅ | ❌ | ✅ | 汇编代码转译 |
-| **Agent-NCNN (Ours)** | **Repo-level** | **C++ / RVV** | **✅** | **✅** | **✅** | **跨架构算子迁移与优化** |
+| **Agent-NCNN (Ours)** | **Repo-level** | **C++ / intrinsic** | **✅** | **✅** | **✅** | **跨架构算子迁移与优化** |
 
 ### 🚀 核心差异分析 (Key Differentiators)
 
@@ -166,7 +166,7 @@
 基于上述设计，我们提供了丰富的测试用例集，涵盖从基础算子到复杂模型场景的全面评估。
 
 ### 1. 算子级题目 (Operator Cases)
-数据集包含 **16 个 NCNN 推理框架核心算子**，旨在覆盖推理关键路径并验证 RVV 向量化加速效果,详细见[算子级题目](data/operators_level/NCNN_operator_README.md)。主要类别如下：
+数据集包含 **16 个 NCNN 推理框架核心算子**，旨在覆盖推理关键路径并验证 RVV 向量化加速效果,详见[算子级题目](data/operators_level/NCNN_operator_README.md)。主要类别如下：
 
 * **激活与归一化 (Activation & Norm)**:
     * `ReLU`, `Swish`, `Sigmoid`, `TanH`, `GELU` (包含近似实现路径)
@@ -179,7 +179,7 @@
     * `Concat` (多输入拼接，含通道特化变体), `Eltwise` (逐元素加/乘/最大)
 
 ### 2. 模型级题目 (Model Cases)
-共计 **41 个模型**，分为两个层级进行端到端迁移评估，考察 Agent 在不同复杂度下的算子实现与替换能力。
+共计 **41 个模型**，分为两个层级进行端到端迁移评估，考察 Agent 在不同复杂度下的算子实现与替换能力,详见[模型级level1题目](data/models_level/Level1_README.md)和详见[模型级level2题目](data/models_level/Level2_README.md)。
 
 #### Level 1：基础模型迁移 (17 个模型)
 主要用于测试 Agent 在无算子重叠的实战场景下的底层算子迁移能力。
