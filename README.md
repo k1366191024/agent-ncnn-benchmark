@@ -47,32 +47,7 @@
 
 利用大模型智能体进行自动算子性能优化，不仅能节省手动迁移的大量成本，还能显著提升端到端的模型推理速度。
 
----
 
-## 🧩 迁移难点 (Key Challenges)
-
-本项目面临的挑战不仅仅是指令集的翻译，更在于跨越**硬件架构范式**与**软件工程复杂度**的双重鸿沟。
-
-### 1. 架构范式的根本性差异 (Architectural Paradigm Shift)
-* **固定 vs. 可变 (Fixed vs. Scalable)**: x86 AVX/SSE 依赖固定长度寄存器，代码中充斥着硬编码的步长（如 `i += 8`）。而 RISC-V RVV 采用硬件无关的向量长度 (VLEN)。迁移时必须将“定长循环”重构为基于 `vsetvli` 的 **Strip-mining 循环**。
-* **指令语义鸿沟**: 许多 x86 复杂指令（如 `_mm256_shuffle_ps`）在 RISC-V 中没有 1:1 的映射，需要组合 `vrgather`, `vmerge`, `vslide` 等多条基础指令才能等效实现，极其考验智能体的逻辑重组能力。
-
-### 2. 复杂的寄存器与内存管理 (Resource Management)
-* **LMUL 的动态权衡**: RVV 独有的 **LMUL (Logic Vector Length Multiplier)** 机制要求智能体根据算子计算密度，动态推断最优的寄存器分组策略，以平衡指令吞吐量与寄存器溢出风险。
-* **NCNN 特有的数据打包**: NCNN 强制采用了 `elempack` 数据布局。智能体必须具备**“布局感知 (Layout-Aware)”**能力，正确处理非标准布局下的 Load/Store 及边界对齐，否则极易引发段错误。
-
-### 3. 项目级依赖导致的“上下文幻觉” (Project-Level Hallucination)
-这是从 Demo 走向真实工程最大的拦路虎。
-* **隐形依赖链 (Implicit Dependency Chains)**:
-    * 真实算子实现并非孤立存在，往往依赖分散在 `headers/`、`utils/` 中的宏定义、结构体声明及辅助函数。
-    * **难点**: 智能体如果只关注当前源文件，会因缺失类型定义而**“臆造” (Hallucinate)** 出不存在的 API 或错误的函数签名；若引入过多无关文件，又会因 Context Window 噪声导致注意力分散。
-* **预处理器的“迷雾” (Macro Obfuscation)**:
-    * NCNN 大量使用 C 预处理器（Macros）来生成模板代码（如 `DEFINE_LAYER_CREATOR`）。
-    * **难点**: 这种元编程手段掩盖了真实的控制流。智能体难以像编译器一样精准展开宏，极易在理解代码逻辑时产生误判，导致生成的迁移代码引用了错误的符号或逻辑分支。
-
-> **总结**: 本 Benchmark 要求智能体具备**全栈能力**：向下要精通 RVV 汇编与微架构特性，向上要能解析复杂的 C++ 工程依赖关系，准确管理上下文以抑制幻觉。
-
----
 
 ## ⚖️ 与其他库及 Benchmark 的差异 (Comparison)
 
@@ -82,49 +57,16 @@
 
 虽然 NCNN 和 OpenCV 同为计算机视觉领域的 C++ 库，但两者的**优化哲学**与**迁移难度**存在维度级的差异。
 
-#### 🚩 1.1 优化哲学的根本分歧 (Optimization Philosophy)
-* **OpenCV (通用主义 / Generality)**
-    * **目标**: 覆盖广泛的视觉场景，保持 API 稳定。
-    * **特征**: 标准化数据格式 (HWC/CHW)，易于互操作；算子相对独立；向量化仅集中在热点区域。
-* **NCNN (极致主义 / Extremism)**
-    * **目标**: 榨干端侧推理的**每一个时钟周期**，追求极限性能。
-    * **特征**: 激进的内存布局 (`elempack`) 牺牲通用性换取连续访问；手工优化的汇编 Intrinsics 占比极高。
+#### 🚩 优化哲学的根本分歧 (Optimization Philosophy)
 
-#### 🧩 1.2 算子语义的复杂度鸿沟 (Complexity Gap)
+#### 🧩 算子语义的复杂度鸿沟 (Complexity Gap)
 
-| 维度 | NCNN 深度学习算子 | OpenCV 传统算子 |
-| :--- | :--- | :--- |
-| **计算密度** | **极高** (如 Winograd 卷积，单算子数千行代码) | **中低** (多数为简单像素操作) |
-| **数据依赖** | **复杂** (多层循环嵌套，Tiling 策略) | **简单** (多为逐像素/邻域操作) |
-| **精度要求** | 需处理 `int8`/`fp16` 量化细节 | 通常 `float32`/`uint8` 即可 |
+#### 📦 独特的数据布局陷阱 (Layout Pitfalls)
 
-> **迁移挑战**: NCNN 要求智能体深刻理解算法的数学本质（如卷积的 Winograd 变换），才能将其正确映射到 RVV 的向量化策略中；而 OpenCV 的挑战主要在于算子数量庞大。
+#### 🕸️ 工程依赖的“深度陷阱” (Dependency Depth)
 
-#### 📦 1.3 独特的数据布局陷阱 (Layout Pitfalls)
+#### 🧠 智能体能力需求矩阵 (Capability Matrix)
 
-* **NCNN 的 `elempack` 机制**:
-    ```cpp
-    // input shape: [batch, channels, height, width]
-    // elempack=4 时, 实际存储变为: [batch, channels/4, height, width, 4]
-    ```
-    智能体必须识别代码中**隐式假设**的打包粒度 (4/8/16)，Load/Store 指令必须严格匹配 `vl` 步长，否则会导致**错位访问**。
-* **OpenCV 的标准布局**:
-    采用标准的 `[rows * cols * channels]` 连续存储，访问模式更符合常规思维。
-
-#### 🕸️ 1.4 工程依赖的“深度陷阱” (Dependency Depth)
-* **NCNN (垂直深度高)**: `算子` → `Layer 基类` → `Allocator` → `Option` → `CPU 特性检测`。依赖链虽窄但深，智能体极易在逐层追踪中迷失上下文。
-* **OpenCV (水平广度大)**: `Core` ← `HAL` ← `ImgProc` ← `Parallel_for`。模块间耦合低，但涉及算子总数庞大，面临“上下文爆炸”问题。
-
-#### 🧠 1.5 智能体能力需求矩阵 (Capability Matrix)
-
-| 能力维度 | NCNN 迁移 | OpenCV 迁移 |
-| :--- | :---: | :---: |
-| **算法理解** | ⭐⭐⭐⭐⭐ (需懂深度学习) | ⭐⭐⭐ (传统 CV 知识) |
-| **架构映射** | ⭐⭐⭐⭐⭐ (RVV 特性深度利用) | ⭐⭐⭐⭐ (基础 SIMD 即可) |
-| **上下文管理** | ⭐⭐⭐⭐⭐ (深度依赖链) | ⭐⭐⭐⭐⭐ (广度模块交互) |
-| **宏编程解析** | ⭐⭐⭐⭐⭐ (重度依赖) | ⭐⭐⭐ (相对克制) |
-
-> **总结**: OpenCV 迁移是 **“广度优先搜索”**，而 NCNN 迁移是 **“深度优先探索”**。本 Benchmark 通过 NCNN，定向爆破智能体在复杂工程迁移场景下的**深度思考**能力。
 
 ---
 
@@ -166,23 +108,10 @@
 
 #### 🟢 Level 1: 算子级测试 (Operator Level)
 这是 Benchmark 的基石，关注单个算子从 x86/ARM 到 RISC-V RVV 的迁移质量。
-* **功能正确性测试 (Unit Testing)**:
-    * 对迁移后的算子进行严格的单元测试。
-    * **标准**: 必须通过人类手动编写的测试用例 (Test Cases)，输出结果需与标量实现按位一致 (Bit-exact match) 或误差在容许范围内。
-* **性能基准测试 (Performance Benchmarking)**:
-    * 对比评估迁移后的 RVV 算子性能。
-    * **基线 (Baseline)**: RISC-V 标量实现 (Scalar Implementation)。
-    * **参考 (Reference)**: 人类专家手工优化的 RVV 算子性能 (Human-Optimized)。
+
 
 #### 🟡 Level 2: 模型级测试 (Model Level)
 关注多个算子协同工作时的端到端表现。
-* **Step 1: 算子覆盖测试**: 首先对目标模型涉及的所有算子类型进行单独的单元测试，确保“积木块”的功能正确性。
-* **Step 2: 推理精度测试 (Inference Accuracy)**:
-    * 运行完整模型的推理流程。
-    * **指标**: 将模型的推理结果与 RISC-V 标量实现下的结果进行对比，计算 Top-1/Top-5 精度损失，确保无逻辑错误导致的精度崩塌。
-* **Step 3: 端到端性能测试 (E2E Performance)**:
-    * 测试整个模型完成一次推理所需的总耗时（Latency）。
-    * **评估**: 对比标量实现和人类手工实现的加速比 (Speedup)。
 
 #### 🔴 Level 3: 库级测试 (Library Level)
 * *🚧 敬请期待 (Coming Soon)* - 旨在评估整个 NCNN 库在 RISC-V 架构上的编译构建、依赖管理及系统级兼容性。
@@ -205,42 +134,18 @@
 基于上述设计，我们提供了丰富的测试用例集，涵盖从基础算子到复杂模型场景的全面评估。
 
 ### 1. 算子级题目 (Operator Cases)
-数据集包含 **16 个 NCNN 推理框架核心算子**，旨在覆盖推理关键路径并验证 RVV 向量化加速效果，详见 [算子级题目](data/operators_level/NCNN_operator_README.md)。主要类别如下：
-
-* **激活与归一化 (Activation & Norm)**:
-    * `ReLU`, `Swish`, `Sigmoid`, `TanH`, `GELU` (包含近似实现路径)
-    * `BatchNorm` (通道标准化), `Dropout` (推理期缩放)
-* **卷积与序列建模 (Convolution & Sequence)**:
-    * `Convolution1D` (一维卷积), `DepthwiseConvolution` (深度可分离卷积)
-    * `LSTM` (长短期记忆单元), `InnerProduct` (全连接)
-* **结构与数据处理 (Structure & Data)**:
-    * `Pooling` (池化), `Softmax` (归一化指数)
-    * `Concat` (多输入拼接，含通道特化变体), `Eltwise` (逐元素加/乘/最大)
+数据集包含 **16 个 NCNN 推理框架核心算子**，旨在覆盖推理关键路径并验证 RVV 向量化加速效果，详见 [算子级题目](data/operators_level/NCNN_operator_README.md)。
 
 ### 2. 模型级题目 (Model Cases)
 共计 **41 个模型**，分为两个层级进行端到端迁移评估，考察 Agent 在不同复杂度下的算子实现与替换能力，详见 [模型级 Level 1 题目](data/models_level/Level1_README.md) 和 [模型级 Level 2 题目](data/models_level/Level2_README.md)。
 
 #### Level 1：基础模型迁移 (17 个模型)
 主要用于测试 Agent 在无算子重叠的实战场景下的底层算子迁移能力。
-* **目标检测 (Detection)**: `MobileNetSSD`, `NanoDet` (轻量级), `MobileNetV2/V3 SSDLite`, `SqueezeNetSSD`, `PeleeNet SSD`
-* **图像分类 (Classification)**: `SqueezeNet` (Fire module), `ShuffleNetV2` (Channel Shuffle), `YOLOv8/v11-Cls`
-* **OCR 与文本 (OCR & Text)**: `PP-OCRv3`, `PP-OCRv4` (检测与识别流水线)
-* **特定任务 (Specialized Tasks)**:
-    * `SimplePose` (姿态估计)
-    * `RVM` (实时视频抠图)
-    * `P2PNet` (人群计数/密度估计)
-    * `Piper` (语音合成推理模块)
+
 
 #### Level 2：复杂应用场景 (24 个模型)
 侧重于测试 Agent 在完整模型场景下处理多样化算子集合与复杂数据流的能力。
-* **YOLO 全系列 (YOLO Series)**: 覆盖 `YOLOv2` 至 `YOLOv11` 的经典与最新版本，包含 `YOLOX`, `YOLOv8-World` (开放词汇检测) 以及 `OBB` (旋转框)、`Pose` (姿态)、`Seg` (分割) 等变体。
-* **高级检测与分割 (Advanced Detection & Segmentation)**:
-    * `Faster R-CNN` (两阶段检测, RPN)
-    * `YOLACT` (实时实例分割)
-    * `R-FCN` (区域全卷积网络)
-* **人脸分析 (Face Analysis)**:
-    * `RetinaFace` (人脸检测与关键点)
-    * `SCRFD` (高效人脸检测，含 CrowdHuman 优化版)
+
 
 ### 3. 库级题目 (Lib Cases)
 敬请期待。
