@@ -7,7 +7,7 @@
 [![NCNN](https://img.shields.io/badge/Framework-NCNN-yellow)](https://github.com/Tencent/ncnn)
 
 
-> 🇺🇸 **English Version**: [README_EN.md](./README_EN.md)
+> our **English Version**: [README_EN.md](./README_EN.md)
 ---
 
 ## 📖 目录 (Table of Contents)
