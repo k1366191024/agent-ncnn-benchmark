@@ -6,6 +6,8 @@
 [![RISC-V](https://img.shields.io/badge/Platform-RISC--V-red)](https://riscv.org/)
 [![NCNN](https://img.shields.io/badge/Framework-NCNN-yellow)](https://github.com/Tencent/ncnn)
 
+
+> 🇺🇸 **English Version**: [README_EN.md](./README_EN.md)
 ---
 
 ## 📖 目录 (Table of Contents)
@@ -132,7 +134,7 @@
 
 #### 📊 综合对比表 (Comparison Table)
 
-| Benchmark | 粒度 (Granularity) | 语言 (Language) | 关注正确性 (Correctness) | 关注性能 (Perf) | 跨架构 (Cross-Arch) | 核心任务 (Task Focus) |
+| Benchmark | 粒度 (Granularity) | 语言 (Language) | 关注正确性 (Correctness) | 关注性能 (Perf) | 关注跨架构 (Cross-Arch) | 核心任务 (Task Focus) |
 | :--- | :--- | :--- | :---: | :---: | :---: | :--- |
 | **ClassEval** | Class-level | Python | ✅ | ❌ | ❌ | 类级别的代码生成 |
 | **SWE-bench** | Repo-level | Python | ✅ | ❌ | ❌ | 解决真实 GitHub Issue |
